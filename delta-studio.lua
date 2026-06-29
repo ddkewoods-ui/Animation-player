@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 print("Initializing Delta Studio (Attacker + Victim Dual Animation System)...")
 
@@ -79,6 +80,7 @@ local trackConnection = nil
 local startRootCF = nil 
 local targetVictim = nil
 local victimStartCF = nil
+local isSelectingVictim = false
 
 local RecordBtn = setupButton("⏺ Record Attacker Move", 1, Color3.fromRGB(180, 50, 50))
 
@@ -96,31 +98,45 @@ VictimSelectLabel.Parent = MainFrame
 
 local SelectVictimBtn = setupButton("🎯 Click to Select Victim", 3, Color3.fromRGB(100, 100, 150))
 SelectVictimBtn.MouseButton1Click:Connect(function()
-	local mouse = LocalPlayer:GetMouse()
-	local originalCursor = mouse.Icon
-	mouse.Icon = "rbxasset://textures/Cursors/MouseLockedCursor.png"
-	SelectVictimBtn.BackgroundColor3 = Color3.fromRGB(150, 150, 200)
-	SelectVictimBtn.Text = "Selecting..."
+	if isSelectingVictim then return end
 	
-	local connection
-	connection = mouse.Button1Click:Connect(function()
-		local target = mouse.Target
-		if target then
-			local character = target.Parent
-			if character:FindFirstChild("HumanoidRootPart") and character:FindFirstChildOfClass("Humanoid") then
-				targetVictim = character
-				VictimSelectLabel.Text = "👁 Selected Victim: " .. character.Name
-				VictimSelectLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-				SelectVictimBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 150)
-				SelectVictimBtn.Text = "🎯 Click to Select Victim"
-				connection:Disconnect()
-				mouse.Icon = originalCursor
+	isSelectingVictim = true
+	SelectVictimBtn.BackgroundColor3 = Color3.fromRGB(150, 150, 200)
+	SelectVictimBtn.Text = "Selecting... (Click NPC)"
+	
+	local function cleanupSelection()
+		isSelectingVictim = false
+		SelectVictimBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 150)
+		SelectVictimBtn.Text = "🎯 Click to Select Victim"
+	end
+	
+	local inputConnection
+	inputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed then return end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			local mouse = LocalPlayer:GetMouse()
+			local target = mouse.Target
+			if target then
+				local character = target.Parent
+				if character:FindFirstChild("HumanoidRootPart") and character:FindFirstChildOfClass("Humanoid") then
+					if character ~= LocalPlayer.Character then
+						targetVictim = character
+						VictimSelectLabel.Text = "👁 Selected Victim: " .. character.Name
+						VictimSelectLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+						inputConnection:Disconnect()
+						cleanupSelection()
+						return
+					end
+				end
 			end
 		end
 	end)
 	
 	task.delay(30, function()
-		if connection.Connected then connection:Disconnect() mouse.Icon = originalCursor SelectVictimBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 150) SelectVictimBtn.Text = "🎯 Click to Select Victim" end
+		if inputConnection.Connected then
+			inputConnection:Disconnect()
+			cleanupSelection()
+		end
 	end)
 end)
 
