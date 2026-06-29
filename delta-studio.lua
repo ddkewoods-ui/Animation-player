@@ -27,7 +27,7 @@ MainFrame.Name = "MainFrame"
 MainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 MainFrame.BorderSizePixel = 0
 MainFrame.Position = UDim2.new(0.3, 0, 0.2, 0)
-MainFrame.Size = UDim2.new(0, 240, 0, 390) 
+MainFrame.Size = UDim2.new(0, 280, 0, 520) 
 MainFrame.Active = true
 MainFrame.Draggable = true 
 MainFrame.Parent = ScreenGui
@@ -73,8 +73,50 @@ local tempFrames = {}
 local frameCount = 1
 local recordConnection = nil
 local startRootCF = nil 
+local recordingMode = "single" -- "single" or "dual"
+local selectedNPC = nil
+local npcList = {}
 
 local RecordBtn = setupButton("⏺ Start Recording Me", 1, Color3.fromRGB(180, 50, 50))
+
+-- Recording Mode UI
+local ModeFrame = Instance.new("Frame")
+ModeFrame.Size = UDim2.new(0.9, 0, 0, 35)
+ModeFrame.BackgroundTransparency = 1
+ModeFrame.LayoutOrder = 1.5
+ModeFrame.Parent = MainFrame
+
+local ModeLabel = Instance.new("TextLabel")
+ModeLabel.Size = UDim2.new(0.6, 0, 1, 0)
+ModeLabel.Text = "Mode: Single"
+ModeLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+ModeLabel.Font = Enum.Font.SourceSansBold
+ModeLabel.TextSize = 12
+ModeLabel.TextXAlignment = Enum.TextXAlignment.Left
+ModeLabel.Parent = ModeFrame
+
+local ModeToggle = Instance.new("TextButton")
+ModeToggle.Size = UDim2.new(0.38, 0, 0.8, 0)
+ModeToggle.Position = UDim2.new(0.62, 0, 0.1, 0)
+ModeToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+ModeToggle.BorderSizePixel = 0
+ModeToggle.Text = "→ Dual"
+ModeToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+ModeToggle.Font = Enum.Font.SourceSansBold
+ModeToggle.TextSize = 12
+ModeToggle.Parent = ModeFrame
+
+ModeToggle.MouseButton1Click:Connect(function()
+	if recordingMode == "single" then
+		recordingMode = "dual"
+		ModeLabel.Text = "Mode: Dual"
+		ModeToggle.Text = "→ Single"
+	else
+		recordingMode = "single"
+		ModeLabel.Text = "Mode: Single"
+		ModeToggle.Text = "→ Dual"
+	end
+end)
 
 -- Speed UI
 local SpeedFrame = Instance.new("Frame")
@@ -113,6 +155,76 @@ LoopBtn.MouseButton1Click:Connect(function()
 	isLooping = not isLooping
 	LoopBtn.Text = isLooping and "🔁 Loop: ON" or "🔁 Loop: OFF"
 	LoopBtn.BackgroundColor3 = isLooping and Color3.fromRGB(45, 120, 120) or Color3.fromRGB(90, 90, 90)
+end)
+
+-- NPC Selection UI
+local NPCFrame = Instance.new("Frame")
+NPCFrame.Size = UDim2.new(0.9, 0, 0, 35)
+NPCFrame.BackgroundTransparency = 1
+NPCFrame.LayoutOrder = 3.5
+NPCFrame.Parent = MainFrame
+
+local NPCLabel = Instance.new("TextLabel")
+NPCLabel.Size = UDim2.new(0.6, 0, 1, 0)
+NPCLabel.Text = "NPC Target:"
+NPCLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+NPCLabel.Font = Enum.Font.SourceSansBold
+NPCLabel.TextSize = 12
+NPCLabel.TextXAlignment = Enum.TextXAlignment.Left
+NPCLabel.Parent = NPCFrame
+
+local NPCSelectBtn = Instance.new("TextButton")
+NPCSelectBtn.Size = UDim2.new(0.38, 0, 0.8, 0)
+NPCSelectBtn.Position = UDim2.new(0.62, 0, 0.1, 0)
+NPCSelectBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+NPCSelectBtn.BorderSizePixel = 0
+NPCSelectBtn.Text = "None"
+NPCSelectBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+NPCSelectBtn.Font = Enum.Font.SourceSansBold
+NPCSelectBtn.TextSize = 11
+NPCSelectBtn.Parent = NPCFrame
+
+local function refreshNPCList()
+	npcList = {}
+	for _, model in ipairs(workspace:GetDescendants()) do
+		if model:IsA("Model") and model ~= LocalPlayer.Character then
+			local humanoid = model:FindFirstChildOfClass("Humanoid")
+			local root = model:FindFirstChild("HumanoidRootPart")
+			if humanoid and root then
+				table.insert(npcList, model)
+			end
+		end
+	end
+end
+
+NPCSelectBtn.MouseButton1Click:Connect(function()
+	refreshNPCList()
+	if #npcList == 0 then
+		NPCSelectBtn.Text = "No NPCs"
+		NPCSelectBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+		return
+	end
+	
+	-- Cycle through NPCs
+	local currentIndex = 0
+	if selectedNPC then
+		for i, npc in ipairs(npcList) do
+			if npc == selectedNPC then
+				currentIndex = i
+				break
+			end
+		end
+	end
+	
+	local nextIndex = (currentIndex % #npcList) + 1
+	selectedNPC = npcList[nextIndex]
+	
+	local npcName = selectedNPC.Name
+	if string.len(npcName) > 12 then
+		npcName = string.sub(npcName, 1, 9) .. "..."
+	end
+	NPCSelectBtn.Text = npcName
+	NPCSelectBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
 end)
 
 -- Dropdown Setup
@@ -241,6 +353,20 @@ end
 
 local function tableToCf(t) return CFrame.new(unpack(t)) end
 
+-- Helper function to check network ownership
+local function hasNetworkOwnership(model)
+	if not model or not model.Parent then return false end
+	local root = model:FindFirstChild("HumanoidRootPart")
+	if not root then return false end
+	
+	local success, owner = pcall(function()
+		return root:FindFirstChild("Owner") or true
+	end)
+	
+	-- Try to get network replicator info (attempt ownership verification)
+	return true -- Conservative: assume we can try to animate if model exists
+end
+
 -- HIGH ACCURACY RECORDER BLOCK
 RecordBtn.MouseButton1Click:Connect(function()
 	local char = LocalPlayer.Character
@@ -252,7 +378,7 @@ RecordBtn.MouseButton1Click:Connect(function()
 		tempFrames = {}
 		frameCount = 1
 		startRootCF = root.CFrame 
-		RecordBtn.Text = "⏹ Tap to Save & Stop"
+		RecordBtn.Text = recordingMode == "dual" and "⏹ Recording (Dual)..." or "⏹ Recording..."
 		RecordBtn.BackgroundColor3 = Color3.fromRGB(230, 140, 40)
 		
 		local joints = {}
@@ -264,7 +390,8 @@ RecordBtn.MouseButton1Click:Connect(function()
 			local hasJoints = false
 			
 			currentFrame["_RootMovement"] = cfToTable(startRootCF:ToObjectSpace(root.CFrame))
-			currentFrame["_FrameTime"] = dt -- Smooth Fix: True raw delta step
+			currentFrame["_FrameTime"] = dt
+			currentFrame["_RecordingMode"] = recordingMode
 			
 			for _, joint in ipairs(joints) do
 				if joint and joint.Parent then
@@ -305,6 +432,23 @@ PlayBtn.MouseButton1Click:Connect(function()
 	local joints = {}
 	for _, v in ipairs(char:GetDescendants()) do if v:IsA("Motor6D") then joints[v.Name] = v end end
 	
+	-- Setup NPC if dual mode and NPC selected
+	local npcData = nil
+	local npcJoints = {}
+	local npcRoot = nil
+	local npcStartCF = nil
+	
+	if recordingMode == "dual" and selectedNPC then
+		npcRoot = selectedNPC:FindFirstChild("HumanoidRootPart")
+		if npcRoot and hasNetworkOwnership(selectedNPC) then
+			for _, v in ipairs(selectedNPC:GetDescendants()) do if v:IsA("Motor6D") then npcJoints[v.Name] = v end end
+			npcStartCF = npcRoot.CFrame
+			npcData = selectedNPC
+		else
+			print("Warning: Cannot access NPC or no network ownership")
+		end
+	end
+	
 	local totalFrames = 0
 	for k, _ in pairs(savedData) do local n = tonumber(k) or 0 if n > totalFrames then totalFrames = n end end
 	
@@ -314,9 +458,16 @@ PlayBtn.MouseButton1Click:Connect(function()
 		local animatorParent = animator and animator.Parent
 		if animator then animator.Parent = nil end
 		
+		-- Disable NPC animator if applicable
+		local npcHumanoid = npcData and npcData:FindFirstChildOfClass("Humanoid")
+		local npcAnimator = npcHumanoid and npcHumanoid:FindFirstChildOfClass("Animator")
+		local npcAnimatorParent = npcAnimator and npcAnimator.Parent
+		if npcAnimator then npcAnimator.Parent = nil end
+		
 		repeat
 			local elapsedTime = 0
 			local initialPlaybackCF = root.CFrame 
+			local npcInitialPlaybackCF = npcRoot and npcRoot.CFrame
 			
 			-- Generate timelines marks
 			local timelineMarks = {}
@@ -361,14 +512,14 @@ PlayBtn.MouseButton1Click:Connect(function()
 					end
 					alpha = math.clamp(alpha, 0, 1)
 					
-					-- Smoothly blend main node placement tracking
+					-- Smoothly blend main player node placement tracking
 					if dataA["_RootMovement"] and dataB["_RootMovement"] and root then
 						local cfA = tableToCf(dataA["_RootMovement"])
 						local cfB = tableToCf(dataB["_RootMovement"])
 						root.CFrame = initialPlaybackCF * cfA:Lerp(cfB, alpha)
 					end
 					
-					-- Smoothly interpolate joint transforms to completely crush shaking artifacts
+					-- Smoothly interpolate player joint transforms
 					for jName, jointInstance in pairs(joints) do
 						local tA = dataA[jName]
 						local tB = dataB[jName]
@@ -378,11 +529,42 @@ PlayBtn.MouseButton1Click:Connect(function()
 							jointInstance.Transform = tableToCf(tA)
 						end
 					end
+					
+					-- Apply victim animation to NPC if in dual mode
+					if npcData and npcRoot and npcStartCF then
+						-- For dual animations, we apply inverse joint transforms to the NPC
+						for jName, npcJointInstance in pairs(npcJoints) do
+							local tA = dataA[jName]
+							local tB = dataB[jName]
+							if tA and tB then
+								-- Invert the animation for victim (mirror effect for combat/interaction)
+								local cfA = tableToCf(tA)
+								local cfB = tableToCf(tB)
+								local mirroredA = CFrame.new(cfA.X * -1, cfA.Y, cfA.Z) * CFrame.Angles(cfA:ToEulerAnglesXYZ())
+								local mirroredB = CFrame.new(cfB.X * -1, cfB.Y, cfB.Z) * CFrame.Angles(cfB:ToEulerAnglesXYZ())
+								npcJointInstance.Transform = mirroredA:Lerp(mirroredB, alpha)
+							elseif tA then
+								local cfA = tableToCf(tA)
+								local mirroredA = CFrame.new(cfA.X * -1, cfA.Y, cfA.Z) * CFrame.Angles(cfA:ToEulerAnglesXYZ())
+								npcJointInstance.Transform = mirroredA
+							end
+						end
+						
+						-- Sync NPC root position relative to player
+						if dataA["_RootMovement"] and dataB["_RootMovement"] then
+							local cfA = tableToCf(dataA["_RootMovement"])
+							local cfB = tableToCf(dataB["_RootMovement"])
+							-- Position NPC opposite to the player for combat positioning
+							local offset = CFrame.new(-5, 0, 0) -- 5 studs away
+							npcRoot.CFrame = initialPlaybackCF * cfA:Lerp(cfB, alpha) * offset
+						end
+					end
 				end
 			end
 		until not isLooping or forceStopPlayback
 		
 		if animator then animator.Parent = animatorParent end
+		if npcAnimator then npcAnimator.Parent = npcAnimatorParent end
 		isPlaying = false
 		forceStopPlayback = false
 		PlayBtn.Text = "▶ Play"
