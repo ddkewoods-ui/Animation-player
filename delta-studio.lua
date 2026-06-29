@@ -3,7 +3,7 @@ local LocalPlayer = Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 
-print("Initializing Delta Studio (NPC Victim Animation Recorder)...")
+print("Initializing Delta Studio (Player + NPC Victim Animation)...")
 
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 15)
 if not PlayerGui then return end
@@ -27,7 +27,7 @@ MainFrame.Name = "MainFrame"
 MainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 MainFrame.BorderSizePixel = 0
 MainFrame.Position = UDim2.new(0.3, 0, 0.2, 0)
-MainFrame.Size = UDim2.new(0, 240, 0, 420) 
+MainFrame.Size = UDim2.new(0, 240, 0, 460) 
 MainFrame.Active = true
 MainFrame.Draggable = true 
 MainFrame.Parent = ScreenGui
@@ -35,7 +35,7 @@ MainFrame.Parent = ScreenGui
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, 0, 0, 30)
 TitleLabel.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-TitleLabel.Text = " ☰ NPC Animation Recorder"
+TitleLabel.Text = " ☰ Player + NPC Recorder"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.Font = Enum.Font.SourceSansBold
 TitleLabel.TextSize = 15
@@ -72,20 +72,23 @@ local forceStopPlayback = false
 local tempFrames = {}
 local frameCount = 1
 local recordConnection = nil
-local startRootCF = nil
+local startRootCF = nil 
 local targetNPC = nil
 local npcList = {}
+local victimAnimId = 0
+
+local RecordBtn = setupButton("⏺ Start Recording Me", 1, Color3.fromRGB(180, 50, 50))
 
 -- NPC Selection UI
 local NPCFrame = Instance.new("Frame")
 NPCFrame.Size = UDim2.new(0.9, 0, 0, 35)
 NPCFrame.BackgroundTransparency = 1
-NPCFrame.LayoutOrder = 1
+NPCFrame.LayoutOrder = 2
 NPCFrame.Parent = MainFrame
 
 local NPCLabel = Instance.new("TextLabel")
 NPCLabel.Size = UDim2.new(0.5, 0, 1, 0)
-NPCLabel.Text = "NPC:"
+NPCLabel.Text = "Victim NPC:"
 NPCLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
 NPCLabel.Font = Enum.Font.SourceSansBold
 NPCLabel.TextSize = 12
@@ -146,13 +149,48 @@ NPCSelectBtn.MouseButton1Click:Connect(function()
 	NPCSelectBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
 end)
 
-local RecordBtn = setupButton("⏺ Start Recording NPC", 2, Color3.fromRGB(180, 50, 50))
+-- Victim Anim ID UI
+local AnimFrame = Instance.new("Frame")
+AnimFrame.Size = UDim2.new(0.9, 0, 0, 35)
+AnimFrame.BackgroundTransparency = 1
+AnimFrame.LayoutOrder = 3
+AnimFrame.Parent = MainFrame
+
+local AnimLabel = Instance.new("TextLabel")
+AnimLabel.Size = UDim2.new(0.6, 0, 1, 0)
+AnimLabel.Text = "Victim Anim ID:"
+AnimLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+AnimLabel.Font = Enum.Font.SourceSansBold
+AnimLabel.TextSize = 12
+AnimLabel.TextXAlignment = Enum.TextXAlignment.Left
+AnimLabel.Parent = AnimFrame
+
+local AnimInput = Instance.new("TextBox")
+AnimInput.Size = UDim2.new(0.38, 0, 0.8, 0)
+AnimInput.Position = UDim2.new(0.62, 0, 0.1, 0)
+AnimInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+AnimInput.BorderSizePixel = 0
+AnimInput.Text = "0"
+AnimInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+AnimInput.Font = Enum.Font.SourceSansBold
+AnimInput.TextSize = 12
+AnimInput.Parent = AnimFrame
+
+AnimInput.FocusLost:Connect(function()
+	local id = tonumber(AnimInput.Text)
+	if id and id > 0 then
+		victimAnimId = id
+		AnimInput.BackgroundColor3 = Color3.fromRGB(50, 120, 50)
+	else
+		AnimInput.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
+	end
+end)
 
 -- Speed UI
 local SpeedFrame = Instance.new("Frame")
 SpeedFrame.Size = UDim2.new(0.9, 0, 0, 35)
 SpeedFrame.BackgroundTransparency = 1
-SpeedFrame.LayoutOrder = 3
+SpeedFrame.LayoutOrder = 4
 SpeedFrame.Parent = MainFrame
 
 local SpeedLabel = Instance.new("TextLabel")
@@ -180,7 +218,7 @@ SpeedInput.FocusLost:Connect(function()
 	if num and num > 0 then animSpeed = num SpeedLabel.Text = "Speed: " .. num .. "x" else SpeedInput.Text = tostring(animSpeed) end
 end)
 
-local LoopBtn = setupButton("🔁 Loop: OFF", 4, Color3.fromRGB(90, 90, 90))
+local LoopBtn = setupButton("🔁 Loop: OFF", 5, Color3.fromRGB(90, 90, 90))
 LoopBtn.MouseButton1Click:Connect(function()
 	isLooping = not isLooping
 	LoopBtn.Text = isLooping and "🔁 Loop: ON" or "🔁 Loop: OFF"
@@ -188,13 +226,13 @@ LoopBtn.MouseButton1Click:Connect(function()
 end)
 
 -- Dropdown Setup
-local DropdownBtn = setupButton("▼ Select Auto-Saved Anim", 5, Color3.fromRGB(55, 55, 55))
+local DropdownBtn = setupButton("▼ Select Auto-Saved Anim", 6, Color3.fromRGB(55, 55, 55))
 local DropdownContainer = Instance.new("ScrollingFrame")
 DropdownContainer.Size = UDim2.new(0.9, 0, 0, 70)
 DropdownContainer.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 DropdownContainer.BorderSizePixel = 0
 DropdownContainer.Visible = false
-DropdownContainer.LayoutOrder = 6
+DropdownContainer.LayoutOrder = 7
 DropdownContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
 DropdownContainer.Parent = MainFrame
 
@@ -208,7 +246,7 @@ local function refreshDropdown()
 		local files = {} pcall(function() files = listfiles("") end)
 		local itemOrder, totalHeight = 1, 0
 		for _, file in ipairs(files) do
-			if file:match("^NPCAnim_") and file:sub(-5) == ".json" then
+			if file:match("^Anim_") and file:sub(-5) == ".json" then
 				local itemBtn = Instance.new("TextButton")
 				itemBtn.Size = UDim2.new(1, 0, 0, 25)
 				itemBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
@@ -276,17 +314,17 @@ local function getNextAutoName()
 	if listfiles then
 		local files = {} pcall(function() files = listfiles("") end)
 		for _, file in ipairs(files) do
-			local match = file:match("^NPCAnim_(%d+)%.json")
+			local match = file:match("^Anim_(%d+)%.json")
 			if match then local num = tonumber(match) if num and num > highestNum then highestNum = num end end
 		end
 	end
-	return "NPCAnim_" .. (highestNum + 1) .. ".json"
+	return "Anim_" .. (highestNum + 1) .. ".json"
 end
 
 local ActionRowFrame = Instance.new("Frame")
 ActionRowFrame.Size = UDim2.new(0.9, 0, 0, 35)
 ActionRowFrame.BackgroundTransparency = 1
-ActionRowFrame.LayoutOrder = 7
+ActionRowFrame.LayoutOrder = 8
 ActionRowFrame.Parent = MainFrame
 
 local ActionRowLayout = Instance.new("UIListLayout")
@@ -302,11 +340,11 @@ PlayBtn.Size = UDim2.new(0.48, 0, 1, 0)
 local StopBtn = setupButton("⏹ Stop", 2, Color3.fromRGB(150, 85, 35), ActionRowFrame)
 StopBtn.Size = UDim2.new(0.48, 0, 1, 0)
 
-local CopyBtn = setupButton("📋 Copy CFrame Data", 8)
-local ClearBtn = setupButton("🗑 Clear Selected Save File", 9, Color3.fromRGB(85, 85, 85))
-local DeleteAllBtn = setupButton("💥 Delete All Saved Anims", 10, Color3.fromRGB(140, 35, 35))
+local CopyBtn = setupButton("📋 Copy CFrame Data", 9)
+local ClearBtn = setupButton("🗑 Clear Selected Save File", 10, Color3.fromRGB(85, 85, 85))
+local DeleteAllBtn = setupButton("💥 Delete All Saved Anims", 11, Color3.fromRGB(140, 35, 35))
 
--- Conversion functions
+-- SMOOTH FIX: Removed aggressive rounding entirely to preserve high precision float spaces
 local function cfToTable(cf)
 	return {cf:GetComponents()}
 end
@@ -315,16 +353,9 @@ local function tableToCf(t) return CFrame.new(unpack(t)) end
 
 -- HIGH ACCURACY RECORDER BLOCK
 RecordBtn.MouseButton1Click:Connect(function()
-	if not targetNPC then 
-		print("Please select an NPC target first!")
-		return 
-	end
-	
-	local root = targetNPC:FindFirstChild("HumanoidRootPart")
-	if not targetNPC or not root then 
-		print("Target NPC is invalid or missing HumanoidRootPart")
-		return 
-	end
+	local char = LocalPlayer.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not char or not root then return end
 
 	if not isRecording then
 		isRecording = true
@@ -335,7 +366,7 @@ RecordBtn.MouseButton1Click:Connect(function()
 		RecordBtn.BackgroundColor3 = Color3.fromRGB(230, 140, 40)
 		
 		local joints = {}
-		for _, v in ipairs(targetNPC:GetDescendants()) do if v:IsA("Motor6D") then table.insert(joints, v) end end
+		for _, v in ipairs(char:GetDescendants()) do if v:IsA("Motor6D") then table.insert(joints, v) end end
 		
 		recordConnection = RunService.Heartbeat:Connect(function(dt)
 			if not root or not root.Parent then return end
@@ -343,7 +374,7 @@ RecordBtn.MouseButton1Click:Connect(function()
 			local hasJoints = false
 			
 			currentFrame["_RootMovement"] = cfToTable(startRootCF:ToObjectSpace(root.CFrame))
-			currentFrame["_FrameTime"] = dt
+			currentFrame["_FrameTime"] = dt -- Smooth Fix: True raw delta step
 			
 			for _, joint in ipairs(joints) do
 				if joint and joint.Parent then
@@ -365,41 +396,54 @@ RecordBtn.MouseButton1Click:Connect(function()
 			pcall(function() writefile(calculatedName, HttpService:JSONEncode(savedData)) end)
 			selectedFile = calculatedName DropdownBtn.Text = "📁 " .. calculatedName
 		end
-		RecordBtn.Text = "⏺ Start Recording NPC"
+		RecordBtn.Text = "⏺ Start Recording Me"
 		RecordBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 		refreshDropdown()
 	end
 end)
 
--- INTERPOLATED SMOOTH PLAYBACK BLOCK
+-- INTERPOLATED SMOOTH PLAYBACK BLOCK WITH NPC VICTIM ANIMATION
 PlayBtn.MouseButton1Click:Connect(function()
-	if not targetNPC then 
-		print("Please select an NPC target first!")
-		return 
-	end
-	
-	local root = targetNPC:FindFirstChild("HumanoidRootPart")
-	if not targetNPC or not root or isPlaying or not savedData or next(savedData) == nil then return end
+	local char = LocalPlayer.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not char or not root or isPlaying or not savedData or next(savedData) == nil then return end
 	
 	isPlaying = true
 	forceStopPlayback = false
 	PlayBtn.Text = "Playing..."
 	
 	local joints = {}
-	for _, v in ipairs(targetNPC:GetDescendants()) do if v:IsA("Motor6D") then joints[v.Name] = v end end
+	for _, v in ipairs(char:GetDescendants()) do if v:IsA("Motor6D") then joints[v.Name] = v end end
 	
 	local totalFrames = 0
 	for k, _ in pairs(savedData) do local n = tonumber(k) or 0 if n > totalFrames then totalFrames = n end end
 	
 	task.spawn(function()
-		local humanoid = targetNPC:FindFirstChildOfClass("Humanoid")
+		local humanoid = char:FindFirstChildOfClass("Humanoid")
 		local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
 		local animatorParent = animator and animator.Parent
 		if animator then animator.Parent = nil end
 		
+		-- Load victim animation on NPC if available
+		local victimTrack = nil
+		if targetNPC and victimAnimId > 0 then
+			local npcHumanoid = targetNPC:FindFirstChildOfClass("Humanoid")
+			local npcAnimator = npcHumanoid and npcHumanoid:FindFirstChildOfClass("Animator")
+			if npcAnimator then
+				local victimAnim = Instance.new("Animation")
+				victimAnim.AnimationId = "rbxassetid://" .. victimAnimId
+				victimTrack = npcAnimator:LoadAnimation(victimAnim)
+			end
+		end
+		
 		repeat
 			local elapsedTime = 0
 			local initialPlaybackCF = root.CFrame 
+			
+			-- Play victim animation at start of loop
+			if victimTrack then
+				victimTrack:Play()
+			end
 			
 			-- Generate timelines marks
 			local timelineMarks = {}
@@ -451,7 +495,7 @@ PlayBtn.MouseButton1Click:Connect(function()
 						root.CFrame = initialPlaybackCF * cfA:Lerp(cfB, alpha)
 					end
 					
-					-- Smoothly interpolate joint transforms
+					-- Smoothly interpolate joint transforms to completely crush shaking artifacts
 					for jName, jointInstance in pairs(joints) do
 						local tA = dataA[jName]
 						local tB = dataB[jName]
@@ -464,6 +508,11 @@ PlayBtn.MouseButton1Click:Connect(function()
 				end
 			end
 		until not isLooping or forceStopPlayback
+		
+		-- Stop victim animation
+		if victimTrack then
+			victimTrack:Stop()
+		end
 		
 		if animator then animator.Parent = animatorParent end
 		isPlaying = false
@@ -494,7 +543,7 @@ DeleteAllBtn.MouseButton1Click:Connect(function()
 		if listfiles then
 			local files = {} pcall(function() files = listfiles("") end)
 			for _, file in ipairs(files) do
-				if file:match("^NPCAnim_") and file:sub(-5) == ".json" then pcall(function() if delfile then delfile(file) elseif odfdelfile then odfdelfile(file) end end) end
+				if file:match("^Anim_") and file:sub(-5) == ".json" then pcall(function() if delfile then delfile(file) elseif odfdelfile then odfdelfile(file) end end) end
 			end
 		end
 		selectedFile = nil savedData = {} DropdownBtn.Text = "▼ Select Auto-Saved Anim" task.wait(1)
@@ -503,4 +552,4 @@ DeleteAllBtn.MouseButton1Click:Connect(function()
 end)
 
 pcall(refreshDropdown)
-print("Delta NPC Animation Studio successfully loaded onto screen!")
+print("Delta Studio with NPC Victim Animation successfully loaded!")
