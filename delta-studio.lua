@@ -3,7 +3,7 @@ local LocalPlayer = Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 
-print("Initializing Delta Studio (Player + NPC Victim Animation)...")
+print("Initializing Delta Studio (Attacker + Victim Dual Animation System)...")
 
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 15)
 if not PlayerGui then return end
@@ -27,7 +27,7 @@ MainFrame.Name = "MainFrame"
 MainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 MainFrame.BorderSizePixel = 0
 MainFrame.Position = UDim2.new(0.3, 0, 0.2, 0)
-MainFrame.Size = UDim2.new(0, 240, 0, 460) 
+MainFrame.Size = UDim2.new(0, 240, 0, 620) 
 MainFrame.Active = true
 MainFrame.Draggable = true 
 MainFrame.Parent = ScreenGui
@@ -35,7 +35,7 @@ MainFrame.Parent = ScreenGui
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, 0, 0, 30)
 TitleLabel.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-TitleLabel.Text = " ☰ Player + NPC Recorder"
+TitleLabel.Text = " ☰ Dual Animation Recorder"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.Font = Enum.Font.SourceSansBold
 TitleLabel.TextSize = 15
@@ -66,123 +66,114 @@ local selectedFile = nil
 local animSpeed = 1.0
 local isLooping = false
 local savedData = {}
+local victimData = {}
 local isRecording = false
+local isTrackingVictim = false
 local isPlaying = false
 local forceStopPlayback = false
 local tempFrames = {}
+local tempVictimFrames = {}
 local frameCount = 1
 local recordConnection = nil
+local trackConnection = nil
 local startRootCF = nil 
-local targetNPC = nil
-local npcList = {}
-local victimAnimId = 0
+local targetVictim = nil
+local victimStartCF = nil
 
-local RecordBtn = setupButton("⏺ Start Recording Me", 1, Color3.fromRGB(180, 50, 50))
+local RecordBtn = setupButton("⏺ Record Attacker Move", 1, Color3.fromRGB(180, 50, 50))
 
--- NPC Selection UI
-local NPCFrame = Instance.new("Frame")
-NPCFrame.Size = UDim2.new(0.9, 0, 0, 35)
-NPCFrame.BackgroundTransparency = 1
-NPCFrame.LayoutOrder = 2
-NPCFrame.Parent = MainFrame
+-- VICTIM SELECTION UI
+local VictimSelectLabel = Instance.new("TextLabel")
+VictimSelectLabel.Size = UDim2.new(0.9, 0, 0, 20)
+VictimSelectLabel.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+VictimSelectLabel.Text = "👁 Selected Victim: None"
+VictimSelectLabel.TextColor3 = Color3.fromRGB(200, 100, 100)
+VictimSelectLabel.Font = Enum.Font.SourceSans
+VictimSelectLabel.TextSize = 11
+VictimSelectLabel.BorderSizePixel = 0
+VictimSelectLabel.LayoutOrder = 2
+VictimSelectLabel.Parent = MainFrame
 
-local NPCLabel = Instance.new("TextLabel")
-NPCLabel.Size = UDim2.new(0.5, 0, 1, 0)
-NPCLabel.Text = "Victim NPC:"
-NPCLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
-NPCLabel.Font = Enum.Font.SourceSansBold
-NPCLabel.TextSize = 12
-NPCLabel.TextXAlignment = Enum.TextXAlignment.Left
-NPCLabel.Parent = NPCFrame
-
-local NPCSelectBtn = Instance.new("TextButton")
-NPCSelectBtn.Size = UDim2.new(0.48, 0, 0.8, 0)
-NPCSelectBtn.Position = UDim2.new(0.52, 0, 0.1, 0)
-NPCSelectBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-NPCSelectBtn.BorderSizePixel = 0
-NPCSelectBtn.Text = "None"
-NPCSelectBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
-NPCSelectBtn.Font = Enum.Font.SourceSansBold
-NPCSelectBtn.TextSize = 11
-NPCSelectBtn.Parent = NPCFrame
-
-local function refreshNPCList()
-	npcList = {}
-	for _, model in ipairs(workspace:GetDescendants()) do
-		if model:IsA("Model") and model ~= LocalPlayer.Character then
-			local humanoid = model:FindFirstChildOfClass("Humanoid")
-			local root = model:FindFirstChild("HumanoidRootPart")
-			if humanoid and root then
-				table.insert(npcList, model)
+local SelectVictimBtn = setupButton("🎯 Click to Select Victim", 3, Color3.fromRGB(100, 100, 150))
+SelectVictimBtn.MouseButton1Click:Connect(function()
+	local mouse = LocalPlayer:GetMouse()
+	local originalCursor = mouse.Icon
+	mouse.Icon = "rbxasset://textures/Cursors/MouseLockedCursor.png"
+	SelectVictimBtn.BackgroundColor3 = Color3.fromRGB(150, 150, 200)
+	SelectVictimBtn.Text = "Selecting..."
+	
+	local connection
+	connection = mouse.Button1Click:Connect(function()
+		local target = mouse.Target
+		if target then
+			local character = target.Parent
+			if character:FindFirstChild("HumanoidRootPart") and character:FindFirstChildOfClass("Humanoid") then
+				targetVictim = character
+				VictimSelectLabel.Text = "👁 Selected Victim: " .. character.Name
+				VictimSelectLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+				SelectVictimBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 150)
+				SelectVictimBtn.Text = "🎯 Click to Select Victim"
+				connection:Disconnect()
+				mouse.Icon = originalCursor
 			end
 		end
-	end
-end
+	end)
+	
+	task.delay(30, function()
+		if connection.Connected then connection:Disconnect() mouse.Icon = originalCursor SelectVictimBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 150) SelectVictimBtn.Text = "🎯 Click to Select Victim" end
+	end)
+end)
 
-NPCSelectBtn.MouseButton1Click:Connect(function()
-	refreshNPCList()
-	if #npcList == 0 then
-		NPCSelectBtn.Text = "No NPCs"
-		NPCSelectBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+local VictimTrackBtn = setupButton("📍 Track Victim Move", 4, Color3.fromRGB(100, 150, 100))
+VictimTrackBtn.MouseButton1Click:Connect(function()
+	if not targetVictim or not targetVictim:FindFirstChild("HumanoidRootPart") then
+		VictimSelectLabel.Text = "❌ No victim selected!"
+		VictimSelectLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
 		return
 	end
 	
-	-- Cycle through NPCs
-	local currentIndex = 0
-	if targetNPC then
-		for i, npc in ipairs(npcList) do
-			if npc == targetNPC then
-				currentIndex = i
-				break
+	if not isTrackingVictim then
+		isTrackingVictim = true
+		tempVictimFrames = {}
+		frameCount = 1
+		victimStartCF = targetVictim.HumanoidRootPart.CFrame
+		VictimTrackBtn.Text = "⏹ Stop Tracking"
+		VictimTrackBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 100)
+		VictimSelectLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
+		VictimSelectLabel.Text = "👁 Tracking Victim: " .. targetVictim.Name
+		
+		local victimChar = targetVictim
+		local joints = {}
+		for _, v in ipairs(victimChar:GetDescendants()) do if v:IsA("Motor6D") then table.insert(joints, v) end end
+		
+		trackConnection = RunService.Heartbeat:Connect(function(dt)
+			local root = victimChar:FindFirstChild("HumanoidRootPart")
+			if not root or not root.Parent then return end
+			local currentFrame = {}
+			local hasJoints = false
+			
+			currentFrame["_RootMovement"] = cfToTable(victimStartCF:ToObjectSpace(root.CFrame))
+			currentFrame["_FrameTime"] = dt
+			
+			for _, joint in ipairs(joints) do
+				if joint and joint.Parent then
+					currentFrame[joint.Name] = cfToTable(joint.Transform)
+					hasJoints = true
+				end
 			end
-		end
-	end
-	
-	local nextIndex = (currentIndex % #npcList) + 1
-	targetNPC = npcList[nextIndex]
-	
-	local npcName = targetNPC.Name
-	if string.len(npcName) > 10 then
-		npcName = string.sub(npcName, 1, 7) .. "..."
-	end
-	NPCSelectBtn.Text = npcName
-	NPCSelectBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
-end)
-
--- Victim Anim ID UI
-local AnimFrame = Instance.new("Frame")
-AnimFrame.Size = UDim2.new(0.9, 0, 0, 35)
-AnimFrame.BackgroundTransparency = 1
-AnimFrame.LayoutOrder = 3
-AnimFrame.Parent = MainFrame
-
-local AnimLabel = Instance.new("TextLabel")
-AnimLabel.Size = UDim2.new(0.6, 0, 1, 0)
-AnimLabel.Text = "Victim Anim ID:"
-AnimLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
-AnimLabel.Font = Enum.Font.SourceSansBold
-AnimLabel.TextSize = 12
-AnimLabel.TextXAlignment = Enum.TextXAlignment.Left
-AnimLabel.Parent = AnimFrame
-
-local AnimInput = Instance.new("TextBox")
-AnimInput.Size = UDim2.new(0.38, 0, 0.8, 0)
-AnimInput.Position = UDim2.new(0.62, 0, 0.1, 0)
-AnimInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-AnimInput.BorderSizePixel = 0
-AnimInput.Text = "0"
-AnimInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-AnimInput.Font = Enum.Font.SourceSansBold
-AnimInput.TextSize = 12
-AnimInput.Parent = AnimFrame
-
-AnimInput.FocusLost:Connect(function()
-	local id = tonumber(AnimInput.Text)
-	if id and id > 0 then
-		victimAnimId = id
-		AnimInput.BackgroundColor3 = Color3.fromRGB(50, 120, 50)
+			if hasJoints then
+				tempVictimFrames[tostring(frameCount)] = currentFrame
+				frameCount = frameCount + 1
+			end
+		end)
 	else
-		AnimInput.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
+		isTrackingVictim = false
+		if trackConnection then trackConnection:Disconnect() trackConnection = nil end
+		victimData = tempVictimFrames
+		VictimTrackBtn.Text = "📍 Track Victim Move"
+		VictimTrackBtn.BackgroundColor3 = Color3.fromRGB(100, 150, 100)
+		VictimSelectLabel.Text = "👁 Victim Tracked: " .. targetVictim.Name
+		VictimSelectLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
 	end
 end)
 
@@ -190,7 +181,7 @@ end)
 local SpeedFrame = Instance.new("Frame")
 SpeedFrame.Size = UDim2.new(0.9, 0, 0, 35)
 SpeedFrame.BackgroundTransparency = 1
-SpeedFrame.LayoutOrder = 4
+SpeedFrame.LayoutOrder = 5
 SpeedFrame.Parent = MainFrame
 
 local SpeedLabel = Instance.new("TextLabel")
@@ -218,7 +209,7 @@ SpeedInput.FocusLost:Connect(function()
 	if num and num > 0 then animSpeed = num SpeedLabel.Text = "Speed: " .. num .. "x" else SpeedInput.Text = tostring(animSpeed) end
 end)
 
-local LoopBtn = setupButton("🔁 Loop: OFF", 5, Color3.fromRGB(90, 90, 90))
+local LoopBtn = setupButton("🔁 Loop: OFF", 6, Color3.fromRGB(90, 90, 90))
 LoopBtn.MouseButton1Click:Connect(function()
 	isLooping = not isLooping
 	LoopBtn.Text = isLooping and "🔁 Loop: ON" or "🔁 Loop: OFF"
@@ -226,13 +217,13 @@ LoopBtn.MouseButton1Click:Connect(function()
 end)
 
 -- Dropdown Setup
-local DropdownBtn = setupButton("▼ Select Auto-Saved Anim", 6, Color3.fromRGB(55, 55, 55))
+local DropdownBtn = setupButton("▼ Select Auto-Saved Anim", 7, Color3.fromRGB(55, 55, 55))
 local DropdownContainer = Instance.new("ScrollingFrame")
 DropdownContainer.Size = UDim2.new(0.9, 0, 0, 70)
 DropdownContainer.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 DropdownContainer.BorderSizePixel = 0
 DropdownContainer.Visible = false
-DropdownContainer.LayoutOrder = 7
+DropdownContainer.LayoutOrder = 8
 DropdownContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
 DropdownContainer.Parent = MainFrame
 
@@ -324,7 +315,7 @@ end
 local ActionRowFrame = Instance.new("Frame")
 ActionRowFrame.Size = UDim2.new(0.9, 0, 0, 35)
 ActionRowFrame.BackgroundTransparency = 1
-ActionRowFrame.LayoutOrder = 8
+ActionRowFrame.LayoutOrder = 9
 ActionRowFrame.Parent = MainFrame
 
 local ActionRowLayout = Instance.new("UIListLayout")
@@ -334,15 +325,15 @@ ActionRowLayout.SortOrder = Enum.SortOrder.LayoutOrder
 ActionRowLayout.Padding = UDim.new(0, 6)
 ActionRowLayout.Parent = ActionRowFrame
 
-local PlayBtn = setupButton("▶ Play", 1, Color3.fromRGB(50, 120, 50), ActionRowFrame)
+local PlayBtn = setupButton("▶ Play Both", 1, Color3.fromRGB(50, 120, 50), ActionRowFrame)
 PlayBtn.Size = UDim2.new(0.48, 0, 1, 0)
 
 local StopBtn = setupButton("⏹ Stop", 2, Color3.fromRGB(150, 85, 35), ActionRowFrame)
 StopBtn.Size = UDim2.new(0.48, 0, 1, 0)
 
-local CopyBtn = setupButton("📋 Copy CFrame Data", 9)
-local ClearBtn = setupButton("🗑 Clear Selected Save File", 10, Color3.fromRGB(85, 85, 85))
-local DeleteAllBtn = setupButton("💥 Delete All Saved Anims", 11, Color3.fromRGB(140, 35, 35))
+local CopyBtn = setupButton("📋 Copy CFrame Data", 10)
+local ClearBtn = setupButton("🗑 Clear Selected Save File", 11, Color3.fromRGB(85, 85, 85))
+local DeleteAllBtn = setupButton("💥 Delete All Saved Anims", 12, Color3.fromRGB(140, 35, 35))
 
 -- SMOOTH FIX: Removed aggressive rounding entirely to preserve high precision float spaces
 local function cfToTable(cf)
@@ -351,7 +342,7 @@ end
 
 local function tableToCf(t) return CFrame.new(unpack(t)) end
 
--- HIGH ACCURACY RECORDER BLOCK
+-- HIGH ACCURACY ATTACKER RECORDER BLOCK
 RecordBtn.MouseButton1Click:Connect(function()
 	local char = LocalPlayer.Character
 	local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -374,7 +365,7 @@ RecordBtn.MouseButton1Click:Connect(function()
 			local hasJoints = false
 			
 			currentFrame["_RootMovement"] = cfToTable(startRootCF:ToObjectSpace(root.CFrame))
-			currentFrame["_FrameTime"] = dt -- Smooth Fix: True raw delta step
+			currentFrame["_FrameTime"] = dt
 			
 			for _, joint in ipairs(joints) do
 				if joint and joint.Parent then
@@ -396,17 +387,18 @@ RecordBtn.MouseButton1Click:Connect(function()
 			pcall(function() writefile(calculatedName, HttpService:JSONEncode(savedData)) end)
 			selectedFile = calculatedName DropdownBtn.Text = "📁 " .. calculatedName
 		end
-		RecordBtn.Text = "⏺ Start Recording Me"
+		RecordBtn.Text = "⏺ Record Attacker Move"
 		RecordBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 		refreshDropdown()
 	end
 end)
 
--- INTERPOLATED SMOOTH PLAYBACK BLOCK WITH NPC VICTIM ANIMATION
+-- DUAL PLAYBACK: ATTACKER + VICTIM SIMULTANEOUSLY
 PlayBtn.MouseButton1Click:Connect(function()
 	local char = LocalPlayer.Character
 	local root = char and char:FindFirstChild("HumanoidRootPart")
 	if not char or not root or isPlaying or not savedData or next(savedData) == nil then return end
+	if not targetVictim or not targetVictim:FindFirstChild("HumanoidRootPart") or not victimData or next(victimData) == nil then return end
 	
 	isPlaying = true
 	forceStopPlayback = false
@@ -415,8 +407,15 @@ PlayBtn.MouseButton1Click:Connect(function()
 	local joints = {}
 	for _, v in ipairs(char:GetDescendants()) do if v:IsA("Motor6D") then joints[v.Name] = v end end
 	
-	local totalFrames = 0
-	for k, _ in pairs(savedData) do local n = tonumber(k) or 0 if n > totalFrames then totalFrames = n end end
+	local victimRoot = targetVictim:FindFirstChild("HumanoidRootPart")
+	local victimJoints = {}
+	for _, v in ipairs(targetVictim:GetDescendants()) do if v:IsA("Motor6D") then victimJoints[v.Name] = v end end
+	
+	local totalAttackerFrames = 0
+	for k, _ in pairs(savedData) do local n = tonumber(k) or 0 if n > totalAttackerFrames then totalAttackerFrames = n end end
+	
+	local totalVictimFrames = 0
+	for k, _ in pairs(victimData) do local n = tonumber(k) or 0 if n > totalVictimFrames then totalVictimFrames = n end end
 	
 	task.spawn(function()
 		local humanoid = char:FindFirstChildOfClass("Humanoid")
@@ -424,104 +423,150 @@ PlayBtn.MouseButton1Click:Connect(function()
 		local animatorParent = animator and animator.Parent
 		if animator then animator.Parent = nil end
 		
-		-- Load victim animation on NPC if available
-		local victimTrack = nil
-		if targetNPC and victimAnimId > 0 then
-			local npcHumanoid = targetNPC:FindFirstChildOfClass("Humanoid")
-			local npcAnimator = npcHumanoid and npcHumanoid:FindFirstChildOfClass("Animator")
-			if npcAnimator then
-				local victimAnim = Instance.new("Animation")
-				victimAnim.AnimationId = "rbxassetid://" .. victimAnimId
-				victimTrack = npcAnimator:LoadAnimation(victimAnim)
-			end
-		end
+		local victimHumanoid = targetVictim:FindFirstChildOfClass("Humanoid")
+		local victimAnimator = victimHumanoid and victimHumanoid:FindFirstChildOfClass("Animator")
+		local victimAnimatorParent = victimAnimator and victimAnimator.Parent
+		if victimAnimator then victimAnimator.Parent = nil end
 		
 		repeat
 			local elapsedTime = 0
-			local initialPlaybackCF = root.CFrame 
+			local initialPlaybackCF = root.CFrame
+			local victimPlaybackCF = victimRoot.CFrame
 			
-			-- Play victim animation at start of loop
-			if victimTrack then
-				victimTrack:Play()
-			end
-			
-			-- Generate timelines marks
-			local timelineMarks = {}
+			-- Generate attacker timeline marks
+			local attackerTimelineMarks = {}
 			local currentTotalTime = 0
-			for i = 1, totalFrames do
+			for i = 1, totalAttackerFrames do
 				local frameData = savedData[tostring(i)]
 				local fTime = frameData and frameData["_FrameTime"] or (1/60)
-				timelineMarks[i] = currentTotalTime
+				attackerTimelineMarks[i] = currentTotalTime
 				currentTotalTime = currentTotalTime + fTime
 			end
-			local totalAnimDuration = currentTotalTime
+			local totalAttackerDuration = currentTotalTime
 			
-			while elapsedTime < totalAnimDuration and not forceStopPlayback do
+			-- Generate victim timeline marks
+			local victimTimelineMarks = {}
+			currentTotalTime = 0
+			for i = 1, totalVictimFrames do
+				local frameData = victimData[tostring(i)]
+				local fTime = frameData and frameData["_FrameTime"] or (1/60)
+				victimTimelineMarks[i] = currentTotalTime
+				currentTotalTime = currentTotalTime + fTime
+			end
+			local totalVictimDuration = currentTotalTime
+			
+			local totalDuration = math.max(totalAttackerDuration, totalVictimDuration)
+			
+			while elapsedTime < totalDuration and not forceStopPlayback do
 				local dt = RunService.Heartbeat:Wait()
 				elapsedTime = elapsedTime + (dt * animSpeed)
 				
-				local frameA_Index = 1
-				local frameB_Index = 1
-				
-				-- Scan indices flanking current runtime mark
-				for i = 1, totalFrames - 1 do
-					if elapsedTime >= timelineMarks[i] and elapsedTime <= timelineMarks[i+1] then
-						frameA_Index = i
-						frameB_Index = i + 1
-						break
-					end
-				end
-				if elapsedTime >= timelineMarks[totalFrames] then
-					frameA_Index = totalFrames
-					frameB_Index = totalFrames
-				end
-				
-				local dataA = savedData[tostring(frameA_Index)]
-				local dataB = savedData[tostring(frameB_Index)]
-				
-				if dataA and dataB then
-					local timeA = timelineMarks[frameA_Index]
-					local timeB = timelineMarks[frameB_Index]
-					local alpha = 0
-					if timeB - timeA > 0 then
-						alpha = (elapsedTime - timeA) / (timeB - timeA)
-					end
-					alpha = math.clamp(alpha, 0, 1)
+				-- ATTACKER PLAYBACK
+				if elapsedTime < totalAttackerDuration then
+					local frameA_Index = 1
+					local frameB_Index = 1
 					
-					-- Smoothly blend main node placement tracking
-					if dataA["_RootMovement"] and dataB["_RootMovement"] and root then
-						local cfA = tableToCf(dataA["_RootMovement"])
-						local cfB = tableToCf(dataB["_RootMovement"])
-						root.CFrame = initialPlaybackCF * cfA:Lerp(cfB, alpha)
+					for i = 1, totalAttackerFrames - 1 do
+						if elapsedTime >= attackerTimelineMarks[i] and elapsedTime <= attackerTimelineMarks[i+1] then
+							frameA_Index = i
+							frameB_Index = i + 1
+							break
+						end
+					end
+					if elapsedTime >= attackerTimelineMarks[totalAttackerFrames] then
+						frameA_Index = totalAttackerFrames
+						frameB_Index = totalAttackerFrames
 					end
 					
-					-- Smoothly interpolate joint transforms to completely crush shaking artifacts
-					for jName, jointInstance in pairs(joints) do
-						local tA = dataA[jName]
-						local tB = dataB[jName]
-						if tA and tB then
-							jointInstance.Transform = tableToCf(tA):Lerp(tableToCf(tB), alpha)
-						elseif tA then
-							jointInstance.Transform = tableToCf(tA)
+					local dataA = savedData[tostring(frameA_Index)]
+					local dataB = savedData[tostring(frameB_Index)]
+					
+					if dataA and dataB then
+						local timeA = attackerTimelineMarks[frameA_Index]
+						local timeB = attackerTimelineMarks[frameB_Index]
+						local alpha = 0
+						if timeB - timeA > 0 then
+							alpha = (elapsedTime - timeA) / (timeB - timeA)
+						end
+						alpha = math.clamp(alpha, 0, 1)
+						
+						if dataA["_RootMovement"] and dataB["_RootMovement"] and root then
+							local cfA = tableToCf(dataA["_RootMovement"])
+							local cfB = tableToCf(dataB["_RootMovement"])
+							root.CFrame = initialPlaybackCF * cfA:Lerp(cfB, alpha)
+						end
+						
+						for jName, jointInstance in pairs(joints) do
+							local tA = dataA[jName]
+							local tB = dataB[jName]
+							if tA and tB then
+								jointInstance.Transform = tableToCf(tA):Lerp(tableToCf(tB), alpha)
+							elseif tA then
+								jointInstance.Transform = tableToCf(tA)
+							end
+						end
+					end
+				end
+				
+				-- VICTIM PLAYBACK
+				if elapsedTime < totalVictimDuration then
+					local frameA_Index = 1
+					local frameB_Index = 1
+					
+					for i = 1, totalVictimFrames - 1 do
+						if elapsedTime >= victimTimelineMarks[i] and elapsedTime <= victimTimelineMarks[i+1] then
+							frameA_Index = i
+							frameB_Index = i + 1
+							break
+						end
+					end
+					if elapsedTime >= victimTimelineMarks[totalVictimFrames] then
+						frameA_Index = totalVictimFrames
+						frameB_Index = totalVictimFrames
+					end
+					
+					local dataA = victimData[tostring(frameA_Index)]
+					local dataB = victimData[tostring(frameB_Index)]
+					
+					if dataA and dataB then
+						local timeA = victimTimelineMarks[frameA_Index]
+						local timeB = victimTimelineMarks[frameB_Index]
+						local alpha = 0
+						if timeB - timeA > 0 then
+							alpha = (elapsedTime - timeA) / (timeB - timeA)
+						end
+						alpha = math.clamp(alpha, 0, 1)
+						
+						if dataA["_RootMovement"] and dataB["_RootMovement"] and victimRoot then
+							local cfA = tableToCf(dataA["_RootMovement"])
+							local cfB = tableToCf(dataB["_RootMovement"])
+							victimRoot.CFrame = victimPlaybackCF * cfA:Lerp(cfB, alpha)
+						end
+						
+						for jName, jointInstance in pairs(victimJoints) do
+							local tA = dataA[jName]
+							local tB = dataB[jName]
+							if tA and tB then
+								jointInstance.Transform = tableToCf(tA):Lerp(tableToCf(tB), alpha)
+							elseif tA then
+								jointInstance.Transform = tableToCf(tA)
+							end
 						end
 					end
 				end
 			end
 		until not isLooping or forceStopPlayback
 		
-		-- Stop victim animation
-		if victimTrack then
-			victimTrack:Stop()
-		end
-		
 		if animator then animator.Parent = animatorParent end
+		if victimAnimator then victimAnimator.Parent = victimAnimatorParent end
 		isPlaying = false
 		forceStopPlayback = false
-		PlayBtn.Text = "▶ Play"
+		PlayBtn.Text = "▶ Play Both"
 	end)
 end)
 
 StopBtn.MouseButton1Click:Connect(function() if isPlaying then forceStopPlayback = true end end)
+
 CopyBtn.MouseButton1Click:Connect(function()
 	if not savedData or next(savedData) == nil then return end
 	local dataString = HttpService:JSONEncode(savedData)
@@ -552,4 +597,4 @@ DeleteAllBtn.MouseButton1Click:Connect(function()
 end)
 
 pcall(refreshDropdown)
-print("Delta Studio with NPC Victim Animation successfully loaded!")
+print("Delta Animation Studio (Dual Attacker + Victim Mode) successfully loaded!")
